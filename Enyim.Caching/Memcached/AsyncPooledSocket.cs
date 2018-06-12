@@ -10,9 +10,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Dawn.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace Enyim.Caching.Memcached
@@ -230,12 +227,9 @@ namespace Enyim.Caching.Memcached
 
         public async Task<byte[]> ReadBytesAsync(int count)
         {
-            using (var awaitable = new SocketAwaitable())
-            {
-                awaitable.Buffer = new ArraySegment<byte>(new byte[count], 0, count);
-                await _socket.ReceiveAsync(awaitable);
-                return awaitable.Transferred.Array;
-            }
+            var buffer = new ArraySegment<byte>(new byte[count], 0, count);
+            await _socket.ReceiveAsync(buffer, SocketFlags.None);
+            return buffer.Array;
         }
 
         /// <summary>
@@ -315,24 +309,14 @@ namespace Enyim.Caching.Memcached
 
         public async Task WriteSync(IList<ArraySegment<byte>> buffers)
         {
-            using (var awaitable = new SocketAwaitable())
+            try
             {
-                awaitable.Arguments.BufferList = buffers;
-                try
-                {
-                    await _socket.SendAsync(awaitable);
-                }
-                catch
-                {
-                    _isAlive = false;
-                    ThrowHelper.ThrowSocketWriteError(_socket.RemoteEndPoint, awaitable.Arguments.SocketError);
-                }
-
-                if (awaitable.Arguments.SocketError != SocketError.Success)
-                {
-                    _isAlive = false;
-                    ThrowHelper.ThrowSocketWriteError(_socket.RemoteEndPoint, awaitable.Arguments.SocketError);
-                }
+                await _socket.SendAsync(buffers, SocketFlags.None);
+            }
+            catch (Exception ex)
+            {
+                _isAlive = false;
+                _logger.LogError(ex, nameof(PooledSocket.WriteSync));
             }
         }
 
